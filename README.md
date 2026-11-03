@@ -60,10 +60,17 @@ The full design is in [docs/architecture.md](docs/architecture.md).
 In Claude Code:
 
 ```
-/plugin install conductor --marketplace uranus-workspace/conductor
+/plugin marketplace add uranus-workspace/conductor
+/plugin install conductor@uranus
 ```
 
 You also need `git` and at least one worker CLI signed in: `claude`, `codex` (`codex login`), `opencode`, `cursor-agent` (`cursor-agent login`) or `agy`.
+
+**Updates.** Third-party plugins don't update on their own until you turn it on: `/plugin` → **Marketplaces** → `uranus` → **Enable auto-update**. To update by hand, run `claude plugin update conductor@uranus`, then `/reload-plugins`.
+
+**Uninstall.** Run `/conduct stop` in any project with a run and `/conduct key remove`, then `claude plugin uninstall conductor@uranus`.
+
+[docs/install.md](docs/install.md) has the details: a team setup with auto-update in `settings.json`, and the files and branches the Conductor leaves in your projects.
 
 ## Usage
 
