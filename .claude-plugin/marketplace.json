@@ -1,0 +1,17 @@
+{
+  "name": "uranus",
+  "owner": {
+    "name": "Uranus",
+    "email": "gustavo.bertoi@uranus.com.br"
+  },
+  "plugins": [
+    {
+      "name": "conductor",
+      "source": "./",
+      "description": "Claude Code plugin that splits a goal into tasks and runs them in parallel across Claude, Codex, OpenCode, Cursor and Antigravity, each in its own git worktree."
+    }
+  ],
+  "metadata": {
+    "description": "Uranus plugins for Claude Code."
+  }
+}

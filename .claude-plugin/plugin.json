@@ -1,0 +1,60 @@
+{
+  "name": "conductor",
+  "version": "0.1.0",
+  "description": "Claude Code plugin that splits a goal into tasks and runs them in parallel across Claude, Codex, OpenCode, Cursor and Antigravity, each in its own git worktree.",
+  "author": {
+    "name": "Uranus",
+    "email": "gustavo.bertoi@uranus.com.br"
+  },
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "enabled": {
+      "type": "boolean",
+      "title": "Conductor on",
+      "description": "Off: no heartbeat, nothing is planned or dispatched; workers already running finish on their own.",
+      "default": true
+    },
+    "worker_claude": {
+      "type": "boolean",
+      "title": "Worker: Claude (claude -p)",
+      "description": "Switches the claude worker for every project. Off, it leaves routing and review.",
+      "default": true
+    },
+    "worker_codex": {
+      "type": "boolean",
+      "title": "Worker: Codex (codex exec)",
+      "description": "Switches the codex worker for every project. Off, it leaves routing and review.",
+      "default": true
+    },
+    "worker_opencode": {
+      "type": "boolean",
+      "title": "Worker: OpenCode (opencode run)",
+      "description": "Switches the opencode worker for every project. Off, it leaves routing and review.",
+      "default": true
+    },
+    "worker_cursor": {
+      "type": "boolean",
+      "title": "Worker: Cursor (agent)",
+      "description": "Switches the cursor worker for every project. Off, it leaves routing and review.",
+      "default": true
+    },
+    "worker_antigravity": {
+      "type": "boolean",
+      "title": "Worker: Antigravity (agy)",
+      "description": "Switches the antigravity worker for every project. Off, it leaves routing and review.",
+      "default": true
+    },
+    "worker_openrouter": {
+      "type": "boolean",
+      "title": "Worker: OpenRouter (text only)",
+      "description": "Switches the openrouter worker for every project. Off, it leaves routing and review. It only writes file content (docs, fixtures) for tasks labelled executor:openrouter.",
+      "default": true
+    },
+    "redact_transcript": {
+      "type": "boolean",
+      "title": "LGPD redaction in the conversation",
+      "description": "Masks CPF, CNPJ and secrets before the conversation stores each message; the model then sees the masked text too.",
+      "default": false
+    }
+  }
+}

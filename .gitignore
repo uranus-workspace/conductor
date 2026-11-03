@@ -1,0 +1,4 @@
+.claude-plugin/types/
+.conductor/
+node_modules/
+.DS_Store

@@ -1,0 +1,17 @@
+{
+  "name": "conductor",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Claude Code plugin that splits a goal into tasks and runs them in parallel across Claude, Codex, OpenCode, Cursor and Antigravity, each in its own git worktree.",
+  "scripts": {
+    "test": "node --test --test-reporter=spec tests/unit/*.spec.ts",
+    "test:mod": "claude plugin test .",
+    "validate": "claude plugin validate .",
+    "typecheck": "tsc -p .",
+    "smoke": "node tests/live/smoke.ts"
+  },
+  "engines": {
+    "node": ">=23.6"
+  }
+}
