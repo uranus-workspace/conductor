@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.2.0](https://github.com/uranus-workspace/conductor/compare/v1.1.0...v1.2.0) (2026-11-03)
+
+### Features
+
+* **mod:** store the OpenRouter key on Linux, in the Secret Service ([4212fa7](https://github.com/uranus-workspace/conductor/commit/4212fa72083f58311e47072eae78c74550c5f9c2))
+
 ## [1.1.0](https://github.com/uranus-workspace/conductor/compare/v1.0.0...v1.1.0) (2026-11-03)
 
 ### Features
