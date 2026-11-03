@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.1.0](https://github.com/uranus-workspace/conductor/compare/v1.0.0...v1.1.0) (2026-11-03)
+
+### Features
+
+* **mod:** run dashboard with progress, tokens and costs ([5777eec](https://github.com/uranus-workspace/conductor/commit/5777eec699c96fb42a05a0c11e0f4074dd23a5ce))
+
 ## 1.0.0 (2026-11-03)
 
 ### Features

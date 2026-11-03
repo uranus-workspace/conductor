@@ -1,6 +1,6 @@
 {
   "name": "@uranus-workspace/conductor",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "description": "Claude Code plugin that splits a goal into tasks and runs them in parallel across Claude, Codex, OpenCode, Cursor and Antigravity, each in its own git worktree.",
   "license": "MIT",
