@@ -21,7 +21,7 @@ flowchart TB
 
   subgraph core["Core (src/core, src/graph)"]
     conductor["Conductor<br/>route · dispatch · merge queue · budgets · reconcile"]
-    graph["Graph engine<br/>templates · edges · limits · ownership"]
+    engine["Graph engine<br/>templates · edges · limits · ownership"]
     ledger["Ledger<br/>cost per attempt, node, client"]
   end
 
@@ -54,7 +54,7 @@ flowchart TB
   beat --> conductor
   cmds --> conductor
   tools --> conductor
-  conductor --> graph
+  conductor --> engine
   conductor --> ledger
   conductor --> router
   router --> rules
