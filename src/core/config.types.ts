@@ -139,6 +139,13 @@ export interface FigmaSettings {
   maxChars: number
 }
 
+/** The metrics ledger (/conduct stats): what each session, worker and model did and cost. */
+export interface MetricsSettings {
+  enabled: boolean
+  /** Where the ledger goes; empty: ~/.conductor/metrics, shared by every project. */
+  dir: string
+}
+
 export interface ConductorConfig {
   /** Off: no heartbeat, nothing planned or dispatched; workers already running finish on their own. */
   enabled: boolean
@@ -167,6 +174,7 @@ export interface ConductorConfig {
   jev: JevSettings
   taskSource: TaskSourceSettings
   figma: FigmaSettings
+  metrics: MetricsSettings
 }
 
 /** The config as written on disk, before defaults and resolution. */

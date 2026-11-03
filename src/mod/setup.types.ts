@@ -3,6 +3,7 @@ import type { Board } from '../adapters/task-source/board.types.ts'
 import type { ConductorConfig } from '../core/config.types.ts'
 import type { Conductor } from '../core/conductor.ts'
 import type { Host } from '../core/host.types.ts'
+import type { AppendBuffer, LineLog, MetricsLog } from '../core/metrics.ts'
 
 /** What the mod builds for a session (on start, and again when the OpenRouter key changes). */
 export interface SessionSetup {
@@ -17,4 +18,14 @@ export interface SessionSetup {
   board: Board | undefined
   /** The session's tool names when it was set up (servers were resolved from them). */
   toolNames: readonly string[]
+  logs: SessionLogs
+}
+
+/** Where the session writes: the project's log and the metrics ledger, through one buffer. */
+export interface SessionLogs {
+  buffer: AppendBuffer
+  /** .conductor/logs/conductor-<day>.log in the project. */
+  project: LineLog
+  /** ~/.conductor/metrics; undefined when the project switches metrics off. */
+  metrics?: MetricsLog
 }

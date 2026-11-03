@@ -21,7 +21,7 @@ The Conductor runs coding agents on your machine with your credentials. These ar
 
 - **The OpenRouter key** is kept in the system's secret store (the macOS Keychain, or the Secret Service on Linux) or `OPENROUTER_API_KEY`. It reaches workers through their environment only, never on a command line, in a log, on a board or in the conversation.
 - **Workers** write only inside their own worktree under `~/.conductor/worktrees/`, never push, and never deploy. Your `.env` files are not copied into a worktree.
-- **Redaction**: API keys and CPF/CNPJ numbers are masked before text goes to OpenRouter or a board.
+- **Redaction**: API keys and CPF/CNPJ numbers are masked before text goes to OpenRouter or a board, and before it is written to the project's log or the metrics ledger. Both stay on your machine (`.conductor/logs`, `~/.conductor/metrics`); nothing is sent anywhere.
 - **The edit guard**: Claude cannot edit files in a worktree while a worker is using it.
 - **Board content** (Uranus OS, Jira, Linear, Figma) is treated as data, never as instructions to the maestro.
 

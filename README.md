@@ -104,6 +104,7 @@ Claude is only interrupted when a task needs a decision: a review, a merge confl
 | `/conduct source` | Check the connection to the configured board |
 | `/conduct figma <link>` | Fetch the design context of a Figma link |
 | `/conduct jev` | Compare Jev's decisions with the rules and suggest thresholds |
+| `/conduct stats [days]` | Sessions, worktrees, cost, tokens, success by worker, model and template, top errors |
 | `/conduct handoff` | Write a short summary of the conversation for after a `/clear` |
 
 ## Workers
@@ -151,6 +152,7 @@ Put overrides in `.conductor/config.json` in your project. Every field is option
 - `gateway`: `openrouter` or `native` (each CLI's own login). A worker's `provider` overrides it.
 - `decision.mode`: `rules`, `shadow` (Jev's answers are logged, the rules decide) or `enforce` (Jev decides when confident, the rules otherwise).
 - Models are set per worker and provider in `executors.<id>.models`. All defaults are in [src/core/config.ts](src/core/config.ts).
+- `metrics`: the ledger behind `/conduct stats`, on by default, in `~/.conductor/metrics` (see [docs/metrics.md](docs/metrics.md)).
 
 The OpenRouter key is read from `OPENROUTER_API_KEY`, or from the system's secret store after `/conduct key`: the Keychain on macOS, the Secret Service (GNOME Keyring, KWallet or KeePassXC) on Linux. See [docs/install.md](docs/install.md#the-openrouter-key).
 
@@ -173,7 +175,7 @@ npm run smoke                    # live run with the installed worker CLIs (uses
 node tests/live/openrouter.ts    # live check of Jev and OpenRouter
 ```
 
-Code conventions are in [CLAUDE.md](CLAUDE.md). The original design notes are in [docs/CONTEXT.md](docs/CONTEXT.md), and findings about the APIs used are in [docs/api-findings.md](docs/api-findings.md).
+Logs and the metrics ledger are described in [docs/metrics.md](docs/metrics.md). Code conventions are in [CLAUDE.md](CLAUDE.md). The original design notes are in [docs/CONTEXT.md](docs/CONTEXT.md), and findings about the APIs used are in [docs/api-findings.md](docs/api-findings.md).
 
 ## Contributing
 

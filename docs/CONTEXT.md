@@ -160,6 +160,7 @@ Board: `Backlog → Ready → Running → Verifying → Review → Done → Merg
 - **Phase 4** — done: UranusOSTaskSource over `$.mcp.call`, periodic updates, a private marketplace, LGPD redaction (optional).
 - **Graph engineering (new phase 2)** — done: the graph engine, the six templates, write ownership, edges with limits, checkpoints per node, `/conduct graph`, reviewer from another lab.
 - **Boards and design (new phase 3)** — done: Jira and Linear as task sources over their MCP servers (with Uranus OS on the same `Board` interface), Figma design references.
+- **Logs and metrics** — done: the Conductor's own log in `.conductor/logs`, and a metrics ledger in `~/.conductor/metrics` (sessions, jobs, nodes, tasks, runs, snapshots, errors, with worker, model, cost and tokens) behind `/conduct stats`: the data a self-improving loop will learn from.
 - **Dashboard** — done: a progress band above the prompt (bar, running tasks, tokens, cost against the budget) and a dashboard pane that opens with the run (stat tiles, cost by worker, every task with its node trail), drawn as text in the terminal and with SVG charts in the desktop app.
 
 ## 16. References

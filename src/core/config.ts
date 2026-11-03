@@ -94,6 +94,7 @@ export const DEFAULT_SETTINGS: ConductorConfigInput = {
     },
   },
   figma: { server: 'auto', clientFrameworks: '', maxChars: 6000 },
+  metrics: { enabled: true, dir: '' },
 }
 
 const isObject = (v: unknown): v is JsonObject => typeof v === 'object' && v !== null && !Array.isArray(v)

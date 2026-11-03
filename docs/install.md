@@ -115,6 +115,7 @@ Claude Code does not know about these; delete them if you no longer need them.
 |---|---|---|
 | Worker worktrees | `~/.conductor/worktrees/` | `rm -rf ~/.conductor`, then `git worktree prune` in each project |
 | Run state, logs, graphs, Jev decisions, config | `.conductor/` in each project | `rm -rf .conductor` |
+| The metrics ledger (`/conduct stats`) | `~/.conductor/metrics/` | `rm -rf ~/.conductor` (with the worktrees) |
 | The ignore line for `.conductor/` | `.git/info/exclude` in each project | delete the `.conductor/` line |
 | Task and integration branches | `conductor/<runId>/…` in each project | see below |
 

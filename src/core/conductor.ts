@@ -8,11 +8,12 @@ import { templateOf } from '../graph/templates/index.ts'
 import { researchPrompt, reviewPrompt, workerPrompt } from '../prompts/worker.ts'
 import type { DesignSource, Notifier, WorkerStatus } from './conductor.types.ts'
 import { modelFor } from './config.ts'
-import type { ConductorConfig } from './config.types.ts'
+import type { ConductorConfig, Provider } from './config.types.ts'
 import type { Attempt, BoardRow, ExecutorId, ExecutorResult, Job, PlanInput, Run, RunSummary, Task, TaskStatus, TokenCount, WorkerUsage } from './domain.types.ts'
 import * as git from './git.ts'
 import type { Host } from './host.types.ts'
 import { killJob, pollJob, startJob, tail } from './jobs.ts'
+import type { MetricEvent, MetricsSink, WorkerRef } from './metrics.types.ts'
 import { escalate, pickAvailable } from './routing.ts'
 import { findCycle, isBlocked, isReady } from './state-machine.ts'
 import { iso } from './time.ts'
@@ -41,6 +42,7 @@ export class Conductor {
   private readonly config: ConductorConfig
   private readonly notifier: Notifier
   private readonly design: DesignSource | undefined
+  private readonly metrics?: MetricsSink
   private available: ExecutorId[] = []
   private workerStatus: WorkerStatus[] = []
   private lock: Promise<unknown> = Promise.resolve()
@@ -48,7 +50,9 @@ export class Conductor {
   constructor(
     host: Host, source: TaskSource, decision: DecisionModel, executors: Executor[], config: ConductorConfig, notifier: Notifier,
     design?: DesignSource,
+    metrics?: MetricsSink,
   ) {
+    this.metrics = metrics
     this.host = host
     this.source = source
     this.decision = decision
@@ -56,6 +60,18 @@ export class Conductor {
     this.config = config
     this.notifier = notifier
     this.design = design
+  }
+
+  /** Reports to the metrics ledger, when there is one (/conduct stats). */
+  private emit(event: MetricEvent): void {
+    this.metrics?.record(event)
+  }
+
+  /** Starts a job, and records who runs it. */
+  private async launch(t: Task, who: WorkerRef & { provider?: Provider; attempt: number }, spec: Parameters<typeof startJob>[1]): Promise<Job> {
+    const job = await startJob(this.host, spec)
+    this.emit({ kind: 'job.started', runId: t.runId, taskId: t.id, job: spec.kind, template: t.template, ...who })
+    return job
   }
 
   /** Everything that reads and writes tasks runs one at a time: the heartbeat, tools, commands. */
@@ -114,6 +130,7 @@ export class Conductor {
   async createRun(goal: string): Promise<string> {
     return this.exclusive(async () => {
       const { runId } = await this.source.createRun(goal)
+      this.emit({ kind: 'run.created', runId, goal })
       return runId
     })
   }
@@ -171,6 +188,7 @@ export class Conductor {
       await git.excludeConductorDir(this.host, this.host.cwd)
       const { branch, baseRef } = await git.ensureIntegration(this.host, this.host.cwd, runId, this.worktreeRoot)
       await this.source.updateRun(runId, { status: 'active', integrationBranch: branch, baseRef: run.baseRef ?? baseRef })
+      this.emit({ kind: 'run.planned', runId, tasks: tasks.length })
       return tasks
     })
   }
@@ -203,6 +221,7 @@ export class Conductor {
         }
       }
       await this.source.updateRun(runId, { status: 'stopped' })
+      await this.emitRunFinished(runId, 'stopped')
       await this.publishSummary(runId)
       return killed
     })
@@ -291,7 +310,10 @@ export class Conductor {
           await this.save(this.withoutJobs(t))
           continue
         }
-        await this.advance(t, events).catch(err => this.failNode(t, `internal: ${String(err)}`, events))
+        await this.advance(t, events).catch(err => {
+          this.emit({ kind: 'error', where: 'advance', message: String(err), runId, taskId: t.id })
+          return this.failNode(t, `internal: ${String(err)}`, events)
+        })
       }
       if (run.status === 'active') {
         await this.route(runId, events)
@@ -300,6 +322,41 @@ export class Conductor {
       }
       await this.settle(runId, events)
       await this.publishSummary(runId)
+      await this.snapshot(runId)
+    })
+  }
+
+  private lastSnapshot = ''
+
+  /** How many jobs and worktrees are in hand, recorded when it changes. */
+  private async snapshot(runId: string): Promise<void> {
+    if (this.metrics === undefined) return
+    const byExecutor: Partial<Record<ExecutorId, number>> = {}
+    let runningJobs = 0
+    let worktrees = 0
+    for (const t of await this.source.listTasks(runId)) {
+      const jobs = this.jobsOf(t)
+      if (jobs.length === 0) continue
+      runningJobs += jobs.length
+      worktrees += 1 + (t.attempts.at(-1)?.shards?.filter(s => s.job).length ?? 0)
+      for (const job of jobs) if (job.executor) byExecutor[job.executor] = (byExecutor[job.executor] ?? 0) + 1
+    }
+    const signature = JSON.stringify([runId, runningJobs, worktrees, byExecutor])
+    if (signature === this.lastSnapshot) return
+    this.lastSnapshot = signature
+    this.emit({ kind: 'snapshot', runId, runningJobs, byExecutor, worktrees })
+  }
+
+  private async emitRunFinished(runId: string, status: Run['status']): Promise<void> {
+    if (this.metrics === undefined) return
+    const run = await this.source.getRun(runId)
+    const tasks = await this.source.listTasks(runId)
+    const usage = this.usageOf(tasks)
+    const minutes = run ? Math.round((await this.host.now() - Date.parse(run.createdAt)) / 60_000) : 0
+    this.emit({
+      kind: 'run.finished', runId, status, tasks: tasks.length,
+      merged: tasks.filter(t => t.status === 'merged').length, failed: tasks.filter(t => t.status === 'failed').length,
+      costUsd: this.costOf(tasks), tokensIn: usage.tokensIn, tokensOut: usage.tokensOut, minutes,
     })
   }
 
@@ -362,6 +419,14 @@ export class Conductor {
       status: outcome.status, writes: outcome.writes, costUsd: outcome.costUsd, decision,
     }
     const saved = await this.save({ ...this.withoutJobs(t), nodeRuns: [...(t.nodeRuns ?? []), run] })
+    const attempt = t.attempts.at(-1)
+    // The worker that did this node's work: the reviewer for a review, the author for research and implement.
+    const worker: WorkerRef = node === 'review' ? { executor: attempt?.reviewer } : node === 'implement' || node === 'research' ? { executor: attempt?.executor, tier: attempt?.tier, model: attempt?.model } : {}
+    this.emit({
+      kind: 'node.finished', runId: t.runId, taskId: t.id, template: this.template(t).id, node, status: outcome.status,
+      to: target.to, rule: target.rule, costUsd: outcome.costUsd, reason: outcome.reason ?? target.reason, ...worker,
+      ...(node === 'implement' && attempt?.tokens ? { tokensIn: attempt.tokens.input, tokensOut: attempt.tokens.output } : {}),
+    })
     await this.enterNode(saved, target.to, target.reason, events)
   }
 
@@ -377,6 +442,22 @@ export class Conductor {
     await this.completeNode(saved, node === 'route' || node === 'plan' ? 'implement' : node, { status: 'fail', reason, writes: [] }, events)
   }
 
+  private async emitTaskFinished(t: Task, status: 'merged' | 'failed', reason: string): Promise<void> {
+    if (this.metrics === undefined) return
+    const first = t.attempts[0]?.startedAt ?? t.nodeRuns?.[0]?.startedAt
+    const minutes = first ? Math.round((await this.host.now() - Date.parse(first)) / 60_000) : 0
+    this.emit({
+      kind: 'task.finished', runId: t.runId, taskId: t.id, template: this.template(t).id, status,
+      attempts: t.attempts.length,
+      retries: (t.nodeRuns ?? []).filter(r => r.decision?.rule === 'retry').length,
+      executors: [...new Set(t.attempts.map(a => a.executor))],
+      models: [...new Set(t.attempts.flatMap(a => (a.model ? [a.model] : [])))],
+      costUsd: this.costOf([t]),
+      tokens: t.attempts.reduce((sum, a) => sum + (a.tokens?.input ?? 0) + (a.tokens?.output ?? 0), 0),
+      minutes, reason,
+    })
+  }
+
   /** Enters a node (or a terminal): sets the cursor, derives the status, and starts what the node runs. */
   private async enterNode(t: Task, cursor: Cursor, reason: string, events: string[]): Promise<void> {
     const now = iso(await this.host.now())
@@ -384,6 +465,7 @@ export class Conductor {
     switch (cursor) {
       case 'END': {
         const merged = await this.setStatus(task, 'merged', reason)
+        await this.emitTaskFinished(merged, 'merged', reason)
         await this.commentPath(merged)
         await this.decision.label?.(merged).catch(() => undefined)
         events.push(`✓ ${t.id} ${this.template(t).merges ? 'merged' : 'finished'}: ${t.title}`)
@@ -392,6 +474,7 @@ export class Conductor {
       }
       case 'failed': {
         const failed = await this.setStatus(task, 'failed', reason)
+        await this.emitTaskFinished(failed, 'failed', reason)
         await this.commentPath(failed)
         await this.decision.label?.(failed).catch(() => undefined)
         events.push(`✗ ${t.id} failed: ${firstLine(reason)}`)
@@ -555,7 +638,7 @@ export class Conductor {
     }
     await executor.prepare?.(this.host, req)
     const cmd = executor.command(req)
-    const job = await startJob(this.host, {
+    const job = await this.launch(t, { executor: id, tier: 'cheap', model: req.model, provider: executor.config.provider, attempt: n }, {
       kind: 'research', dir: logDir, cwd: worktree, argv: cmd.argv, env: cmd.env, unset: cmd.unset, timeoutMs: this.config.timeouts.reviewMs,
     })
     const saved = await this.save({ ...task, job: { ...job, executor: id } })
@@ -597,7 +680,7 @@ export class Conductor {
       }
       await executor.prepare?.(this.host, req)
       const cmd = executor.command(req)
-      const job = await startJob(this.host, {
+      const job = await this.launch(t, { executor: id, tier, model, provider: executor.config.provider, attempt: n }, {
         kind: 'implement', dir, cwd, argv: cmd.argv, env: cmd.env, unset: cmd.unset,
         timeoutMs: this.config.timeouts.implementMs, pre: this.config.setup.join(' && ') || undefined,
       })
@@ -627,6 +710,17 @@ export class Conductor {
     return 1
   }
 
+  private async emitJobFinished(t: Task, job: Job, outcome: 'exited' | 'timeout' | 'lost', exitCode: number): Promise<void> {
+    if (this.metrics === undefined) return
+    const attempt = t.attempts.at(-1)
+    const byAuthor = job.executor !== undefined && job.executor === attempt?.executor && (job.kind === 'implement' || job.kind === 'research')
+    this.emit({
+      kind: 'job.finished', runId: t.runId, taskId: t.id, job: job.kind, outcome, exitCode,
+      durationMs: Math.max(0, (await this.host.now()) - Date.parse(job.startedAt)),
+      executor: job.executor, ...(byAuthor ? { tier: attempt?.tier, model: attempt?.model } : {}),
+    })
+  }
+
   /** A task's process(es) ended, timed out or vanished: the node they belong to finishes. */
   private async advance(t: Task, events: string[]): Promise<void> {
     const shards = t.attempts.at(-1)?.shards
@@ -638,6 +732,7 @@ export class Conductor {
     if (state.state === 'timeout') await killJob(this.host, job)
     const exitCode = state.state === 'exited' ? state.exitCode : -1
     const why = state.state === 'timeout' ? `timeout after ${Math.round(job.timeoutMs / 60_000)} min` : state.state === 'lost' ? 'lost: the process vanished without an exit code' : undefined
+    await this.emitJobFinished(t, job, state.state, exitCode)
 
     switch (job.kind) {
       case 'research': return this.finishResearch(t, job, exitCode, why, events)
@@ -711,6 +806,7 @@ export class Conductor {
       changed = true
       if (state.state === 'timeout') await killJob(this.host, s.job)
       const exitCode = state.state === 'exited' ? state.exitCode : -1
+      await this.emitJobFinished(t, s.job, state.state, exitCode)
       const result = state.state === 'exited' && executor ? await executor.collect(this.host, s.job.dir, exitCode) : undefined
       if (result?.ok) await git.commitAll(this.host, s.worktree, `conductor: ${t.id} ${t.title} (part)`, attempt.baseRef)
       next.push({
@@ -745,7 +841,7 @@ export class Conductor {
     if (this.config.checks.length === 0 || attempt === undefined) {
       return this.completeNode(t, 'check', { status: 'skip', writes: [] }, events)
     }
-    const job = await startJob(this.host, {
+    const job = await this.launch(t, { attempt: t.attempts.length }, {
       kind: 'check', dir: `${attempt.logDir}/check`, cwd: attempt.worktree,
       argv: ['/bin/sh', '-c', this.config.checks.join(' && ')],
       timeoutMs: this.config.timeouts.checkMs, pre: this.config.setup.join(' && ') || undefined,
@@ -769,7 +865,7 @@ export class Conductor {
     if (this.config.graph.securityCommand.trim() === '' || attempt === undefined) {
       return this.completeNode(t, 'security', { status: 'skip', writes: [] }, events)
     }
-    const job = await startJob(this.host, {
+    const job = await this.launch(t, { attempt: t.attempts.length }, {
       kind: 'security', dir: `${attempt.logDir}/security`, cwd: attempt.worktree,
       argv: ['/bin/sh', '-c', this.config.graph.securityCommand], timeoutMs: this.config.timeouts.checkMs,
     })
@@ -811,7 +907,7 @@ export class Conductor {
     // Every node that starts a worker prepares it first (Claude via OpenRouter needs its context file).
     await reviewer.prepare?.(this.host, req)
     const cmd = reviewer.command(req)
-    const job = await startJob(this.host, {
+    const job = await this.launch(t, { executor: reviewerId, model: req.model, provider: reviewer.config.provider, attempt: t.attempts.length }, {
       kind: 'review', dir: `${attempt.logDir}/review`, cwd: attempt.worktree,
       argv: cmd.argv, env: cmd.env, unset: cmd.unset, timeoutMs: this.config.timeouts.reviewMs,
     })
@@ -988,6 +1084,7 @@ export class Conductor {
     let reason: string | undefined
     if (allMerged) {
       await this.source.updateRun(runId, { status: 'completed' })
+      await this.emitRunFinished(runId, 'completed')
       reason = `Run ${runId} completed: all ${tasks.length} tasks merged into ${run.integrationBranch}. Review the integration branch and decide whether to merge it (never push without the user's confirmation).`
       this.notifier.toast(`conductor: run ${runId} completed`)
     } else if (review.length > 0) {

@@ -125,6 +125,7 @@ function engineStubs(
     return { value: e.value }
   })
   on('session.start', (_: unknown, e: { cwd: string }) => ({ cwd: e.cwd }))
+  on('session.id', () => ({ value: '7f3a9c2e-session' }))
 }
 
 test('/conduct off and worker switches write the settings rows', async ($, on) => {
@@ -318,4 +319,17 @@ test('the Graph button on the dashboard draws that task\'s graph', async ($, on)
   expect(writes.some(w => w.includes('graphs/r1-1.mmd'))).toBe(true)
   await graph.unmount()
   await dash.unmount()
+})
+
+test('/conduct stats reports from the ledger in ~/.conductor/metrics', async ($, on) => {
+  engineStubs(on as never, [])
+  on('fs.list', () => ({ value: [] }))
+  on('fs.exists', () => ({ value: false }))
+  on('clock.now', () => ({ value: Date.parse('2026-11-03T12:00:00.000Z') }))
+  await $.session.start({ cwd: '/p', surface: 'terminal', isInteractive: true })
+  const res = await $.command.run({ command: 'conduct', args: 'stats 7' } as never)
+  const text = (res as { text: string }).text
+  expect(text).toContain('Conductor, 2026-10-27 to 2026-11-03')
+  expect(text).toContain('0 session(s) in 0 project(s)')
+  expect(text).toContain('(ledger: /p/.conductor/metrics; this project\'s log: /p/.conductor/logs)')
 })

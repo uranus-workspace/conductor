@@ -28,10 +28,13 @@ import type { ConductorConfig, SwitchOptions } from '../src/core/config.types.ts
 import { WORKERS } from '../src/core/constants.ts'
 import { Conductor } from '../src/core/conductor.ts'
 import type { Host } from '../src/core/host.types.ts'
+import { isJsonObject, stringAt, tryParse } from '../src/core/json.ts'
+import { AppendBuffer, LineLog, MetricsLog, metricsDirOf, readMetrics } from '../src/core/metrics.ts'
 import { redact } from '../src/core/redact.ts'
+import { buildStats, statsText } from '../src/core/stats.ts'
 import type { WorkerId } from '../src/core/domain.types.ts'
 import { hostOf, realPath } from '../src/mod/host.ts'
-import type { SessionSetup } from '../src/mod/setup.types.ts'
+import type { SessionLogs, SessionSetup } from '../src/mod/setup.types.ts'
 import {
   parseApproveInput, parseAskOpenRouterInput, parseDispatchInput, parsePlanInput, parseRejectInput, parseStatusInput,
 } from '../src/mod/tool-inputs.ts'
@@ -46,7 +49,7 @@ const PANE = 'conductor-board'
 const GRAPH_PANE = 'conductor-graph'
 const graphView = atom({ plugin: 'conductor', key: 'graph' } as const, null as ConductorGraph | null)
 
-const SUBCOMMANDS = 'plan <goal> | run | status | graph <taskId> | pause | stop | retry <taskId> [worker] | cost | on | off | workers | worker <id> on|off | key [status|remove] | source | figma <url> | jev | handoff'
+const SUBCOMMANDS = 'plan <goal> | run | status | graph <taskId> | pause | stop | retry <taskId> [worker] | cost | on | off | workers | worker <id> on|off | key [status|remove] | source | figma <url> | jev | stats [days] | handoff'
 const USAGE = `Usage: /conduct ${SUBCOMMANDS}`
 
 const TASK_SCHEMA = {
@@ -76,6 +79,7 @@ async function build(
   config: ConductorConfig,
   onBoard: (rows: ConductorBoardRow[]) => void,
   toolNames: readonly string[],
+  metrics: MetricsLog | undefined,
 ): Promise<{ conductor: Conductor; router: DecisionRouter; source: TaskSource; board: Board | undefined }> {
   const local = new LocalFileTaskSource(host, `${host.cwd}/.conductor/tasks.json`)
   const board = boardFor(host, config, toolNames)
@@ -121,6 +125,7 @@ async function build(
       },
     },
     config.figma.server !== '' && config.figma.server !== 'auto' ? new FigmaDesignSource(host, config.figma) : undefined,
+    metrics,
   )
   return { conductor, router, source, board }
 }
@@ -166,7 +171,17 @@ async function setUp(
   // Real paths: some workers refuse a working directory spelled through a symlink.
   const cwd = await realPath($, sessionCwd)
   const home = await realPath($, (await $.env.get('HOME')) ?? cwd)
-  const host = hostOf($, cwd, home)
+  const base = hostOf($, cwd, home)
+  // The Conductor's own messages go to the debug log and to .conductor/logs in the project.
+  const buffer = new AppendBuffer(base)
+  const projectLog = new LineLog(buffer, `${cwd}/.conductor/logs`)
+  const host: Host = {
+    ...base,
+    log: message => {
+      base.log(message)
+      projectLog.write('info', message)
+    },
+  }
   // The project's config, then the settings menu's switches over it (a reload brings new ones).
   const projectConfig = parseConfig(await host.read(`${cwd}/.conductor/config.json`))
   let config = applySwitches(projectConfig, options)
@@ -179,8 +194,11 @@ async function setUp(
     $.ui.toast(`conductor: no ${ts.kind} MCP server in this session; using the local task file`)
     config = { ...config, taskSource: { ...ts, kind: 'local' } }
   }
-  const { conductor, router, board } = await build($, host, config, onBoard, toolNames)
-  return { host, projectConfig, config, conductor, router, board, toolNames }
+  const metrics = config.metrics.enabled
+    ? new MetricsLog(buffer, { dir: metricsDirOf(config.metrics.dir, home), session: await $.session.id().catch(() => 'unknown'), project: cwd })
+    : undefined
+  const { conductor, router, board } = await build($, host, config, onBoard, toolNames, metrics)
+  return { host, projectConfig, config, conductor, router, board, toolNames, logs: { buffer, project: projectLog, metrics } }
 }
 
 const asText = (value: unknown) => ({ result: typeof value === 'string' ? value : JSON.stringify(value, null, 2) })
@@ -233,6 +251,7 @@ export const register: Register = (on, options) => {
   let config: ConductorConfig | undefined
   let projectConfig: ConductorConfig | undefined
   let detected: Promise<unknown> = Promise.resolve()
+  let logs: SessionLogs | undefined
   let heartbeat: { cancel(): void } | undefined
   let isTicking = false
   // Worktrees whose task has a process running: the maestro's edits there are refused.
@@ -246,6 +265,12 @@ export const register: Register = (on, options) => {
     return conductor
   }
 
+  /** An error the session hit: into the project's log and the metrics ledger. */
+  const logError = (where: string, err: unknown) => {
+    logs?.project.write('error', `${where}: ${errorText(err)}`)
+    logs?.metrics?.record({ kind: 'error', where, message: errorText(err) })
+  }
+
   const tickActive = async () => {
     if (isTicking || conductor === undefined) return
     isTicking = true
@@ -255,6 +280,8 @@ export const register: Register = (on, options) => {
       if (run !== undefined && run.status !== 'planning') await conductor.tick(run.id)
     } finally {
       isTicking = false
+      // What this tick (or the command before it) logged reaches disk now.
+      void logs?.buffer.flush()
     }
   }
 
@@ -275,7 +302,7 @@ export const register: Register = (on, options) => {
   }
 
   const apply = (setup: SessionSetup): Conductor => {
-    ;({ host, config, projectConfig, conductor, router, board } = setup)
+    ;({ host, config, projectConfig, conductor, router, board, logs } = setup)
     const c = setup.conductor
     // Detection probes CLIs (seconds); reconciliation waits for it, the session does not.
     detected = c.detectExecutors().catch(() => undefined)
@@ -364,9 +391,29 @@ export const register: Register = (on, options) => {
     heartbeat = undefined
     if (config.enabled) {
       heartbeat = $.clock.every(config.heartbeatMs, () => {
-        void tickActive().catch(err => $.ui.log(`conductor: heartbeat failed: ${errorText(err)}`, { to: 'debug' }))
+        void tickActive().catch(err => {
+          $.ui.log(`conductor: heartbeat failed: ${errorText(err)}`, { to: 'debug' })
+          logError('heartbeat', err)
+        })
       })
     }
+
+    // The session in the ledger, once detection says which workers can run here.
+    const startedConfig = config
+    void detected.then(async found => {
+      if (logs?.metrics === undefined || host === undefined) return
+      const manifest = tryParse((await host.read(`${host.pluginRoot}/.claude-plugin/plugin.json`)) ?? '')
+      const uname = await host.run(['uname', '-s'], { timeoutMs: 5000 }).catch(() => undefined)
+      logs.metrics.record({
+        kind: 'session.start',
+        version: (isJsonObject(manifest) ? stringAt(manifest, 'version') : undefined) ?? 'unknown',
+        platform: uname?.stdout.trim() || 'unknown',
+        gateway: startedConfig.gateway,
+        enabled: startedConfig.enabled,
+        workers: Array.isArray(found) ? found.filter(isWorker) : [],
+      })
+      await logs.buffer.flush()
+    }).catch(() => undefined)
 
     const run = config.enabled ? await c.activeRun() : undefined
     await update($, summary, () => null)
@@ -382,6 +429,8 @@ export const register: Register = (on, options) => {
   // say so too, but the built-in cc-plugin-sec-default passes it on before a mod sees it.)
   // The end hook's budget is short, so the reconciliation runs a moment later.
   on('session.end', async ($, e, next) => {
+    logs?.metrics?.record({ kind: 'session.end', reason: e.reason })
+    await logs?.buffer.flush()
     if (e.reason === 'clear' && config?.enabled) {
       $.clock.after(1000, () => {
         void reconcileActive().catch(() => undefined)
@@ -533,6 +582,17 @@ export const register: Register = (on, options) => {
           if (host === undefined || server === undefined || server === '' || server === 'auto') return { text: 'No Figma MCP server in this session (looked for get_design_context).' }
           return { text: await new FigmaDesignSource(host, { ...(config as ConductorConfig).figma, server }).context([url]) }
         }
+        case 'stats': {
+          if (host === undefined || config === undefined) return { text: 'The Conductor is not initialised yet.' }
+          if (!config.metrics.enabled) return { text: 'Metrics are off for this project ("metrics": { "enabled": false } in .conductor/config.json).' }
+          const days = Math.min(365, Math.max(1, Math.floor(Number(rest[0] ?? '30')) || 30))
+          await logs?.buffer.flush()
+          const dir = metricsDirOf(config.metrics.dir, host.home)
+          const until = await host.now()
+          const since = until - days * 86_400_000
+          const report = buildStats(await readMetrics(host, dir, since), since, until)
+          return { text: `${statsText(report)}\n\n(ledger: ${dir}; this project's log: ${host.cwd}/.conductor/logs)` }
+        }
         case 'handoff': {
           // Cheap: one question over this conversation, served mostly from the prompt cache (doc §10.5).
           const reply = await $.model.fork({ prompt: HANDOFF_PROMPT })
@@ -545,6 +605,7 @@ export const register: Register = (on, options) => {
           return { text: USAGE }
       }
     } catch (err) {
+      logError(`/conduct ${e.args.trim().split(/\s+/)[0] ?? ''}`.trim(), err)
       return { text: `conductor: ${errorText(err)}` }
     }
   })
