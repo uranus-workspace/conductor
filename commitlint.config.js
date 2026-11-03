@@ -4,7 +4,7 @@ export default {
   rules: {
     // Subjects often start with a product name: Claude, Codex, Jira, Figma.
     'subject-case': [0],
-    // Release notes and Dependabot bodies carry long links.
+    // Release notes and Renovate bodies carry long links.
     'body-max-line-length': [0],
     'footer-max-line-length': [0],
   },

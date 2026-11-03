@@ -70,6 +70,10 @@ fix(executors): pass the worktree's CLAUDE.md to the Claude reviewer
 
 Keep a pull request to one change, and say in its description how you tested it. A maintainer reviews it (see [.github/CODEOWNERS](.github/CODEOWNERS)) and squash-merges it, so its title becomes the commit message and must follow the same format.
 
+## Dependencies
+
+Dependency updates come from [Renovate](https://docs.renovatebot.com/) every morning ([renovate.json](renovate.json)). Patch and minor updates of dev tooling merge themselves once CI passes; the rest wait for a review. The Dependency Dashboard issue lists what is pending.
+
 ## Releases
 
 Releases are automatic. Every push to `main` runs [semantic-release](https://github.com/semantic-release/semantic-release), which reads the commits since the last tag, picks the next version, updates `CHANGELOG.md`, the version in `package.json` and `.claude-plugin/plugin.json`, tags it and publishes a GitHub release.
