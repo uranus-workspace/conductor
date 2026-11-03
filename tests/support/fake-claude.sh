@@ -22,7 +22,7 @@ if printf '%s' "$prompt" | grep -q 'create the files in scope'; then
     mkdir -p "$(dirname "$f")"
     echo "made in scope" > "$f"
   done
-  printf '{"type":"result","is_error":false,"result":"created the files in scope","total_cost_usd":0.01}\n'
+  printf '{"type":"result","is_error":false,"result":"created the files in scope","total_cost_usd":0.01,"usage":{"input_tokens":100,"output_tokens":20}}\n'
   exit 0
 fi
 echo "made by $name" > "$name"

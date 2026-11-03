@@ -12,6 +12,12 @@ export type ExecutorId = 'claude' | 'codex' | 'cursor' | 'opencode' | 'antigravi
 export type WorkerId = ExecutorId
 export type Tier = 'cheap' | 'standard' | 'strong'
 
+/** Tokens a worker reported for one job, or summed over several. */
+export interface TokenCount {
+  input: number
+  output: number
+}
+
 export interface Classification {
   executor: ExecutorId
   tier: Tier
@@ -55,7 +61,7 @@ export interface Attempt {
   changedFiles?: string[]
   costUsd?: number
   costEstimated?: boolean
-  tokens?: { input: number; output: number }
+  tokens?: TokenCount
   verdict?: 'pass' | 'fail' | 'review'
   /** Who reviewed it: never the author's worker. */
   reviewer?: ExecutorId
@@ -138,7 +144,29 @@ export interface RunSummary {
   running: number
   review: number
   failed: number
+  /** Planned, classified or ready: waiting for a worker or a dependency. */
+  queued: number
   costUsd: number
+  tokensIn: number
+  tokensOut: number
+  budgetRunUsd: number
+  budgetDayUsd: number
+  /** Spend of attempts started today, across every run. */
+  spentTodayUsd: number
+  startedAt: string
+  integrationBranch?: string
+  byWorker: WorkerUsage[]
+}
+
+/** What one worker did in a run: what the dashboard's worker table shows. */
+export interface WorkerUsage {
+  executor: ExecutorId
+  tasks: number
+  attempts: number
+  tokens: number
+  costUsd: number
+  /** Some of its attempts reported no cost, or an estimate. */
+  estimated: boolean
 }
 
 /** One row of the board pane. */
@@ -152,6 +180,20 @@ export interface BoardRow {
   isBusy: boolean
   /** A fan-out's part worktrees while their workers run (the edit guard covers them too). */
   busyWorktrees?: string[]
+  executor?: ExecutorId
+  tier?: Tier
+  attempts: number
+  tokens: number
+  costUsd: number
+  template?: TemplateId
+  /** The node the task stands at (its cursor), and the template's nodes, entry first. */
+  node?: string
+  nodes: string[]
+  /** Position in `nodes`: `nodes.length` once merged, -1 before the first node. */
+  nodeIndex: number
+  /** When the oldest of its running processes started. */
+  runningSince?: string
+  dependsOn: string[]
 }
 
 export interface PlanInput {
@@ -187,7 +229,7 @@ export interface ExecutorResult {
   summary: string
   costUsd?: number
   costEstimated?: boolean
-  tokens?: { input: number; output: number }
+  tokens?: TokenCount
   raw?: string
   error?: string
   /** Text-only workers: the file content `materialize` writes. */

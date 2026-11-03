@@ -9,17 +9,19 @@ import { researchPrompt, reviewPrompt, workerPrompt } from '../prompts/worker.ts
 import type { DesignSource, Notifier, WorkerStatus } from './conductor.types.ts'
 import { modelFor } from './config.ts'
 import type { ConductorConfig } from './config.types.ts'
-import type { Attempt, BoardRow, ExecutorId, ExecutorResult, Job, PlanInput, Run, RunSummary, Task, TaskStatus } from './domain.types.ts'
+import type { Attempt, BoardRow, ExecutorId, ExecutorResult, Job, PlanInput, Run, RunSummary, Task, TaskStatus, TokenCount, WorkerUsage } from './domain.types.ts'
 import * as git from './git.ts'
 import type { Host } from './host.types.ts'
 import { killJob, pollJob, startJob, tail } from './jobs.ts'
 import { escalate, pickAvailable } from './routing.ts'
 import { findCycle, isBlocked, isReady } from './state-machine.ts'
 import { iso } from './time.ts'
+import { usd } from '../ui/format.ts'
 
 const OPEN: readonly TaskStatus[] = ['planned', 'classified', 'ready', 'dispatched', 'running', 'verifying', 'needs_review', 'approved', 'done']
-const usd = (n: number) => `US$ ${n.toFixed(2)}`
 const firstLine = (s: string | undefined) => (s ?? '').split('\n')[0] ?? ''
+const addTokens = (a: TokenCount | undefined, b: TokenCount | undefined): TokenCount | undefined =>
+  a === undefined ? b : b === undefined ? a : { input: a.input + b.input, output: a.output + b.output }
 
 /** Reviewers by preference for an author: another lab first (§5B, independent verification). */
 const REVIEWERS: Readonly<Record<ExecutorId, readonly ExecutorId[]>> = {
@@ -712,12 +714,13 @@ export class Conductor {
       const result = state.state === 'exited' && executor ? await executor.collect(this.host, s.job.dir, exitCode) : undefined
       if (result?.ok) await git.commitAll(this.host, s.worktree, `conductor: ${t.id} ${t.title} (part)`, attempt.baseRef)
       next.push({
-        ...s, job: undefined, done: true, ok: result?.ok === true, summary: result?.summary.slice(0, 1000), costUsd: result?.costUsd,
+        ...s, job: undefined, done: true, ok: result?.ok === true, summary: result?.summary.slice(0, 1000), costUsd: result?.costUsd, tokens: result?.tokens,
         error: result?.ok ? undefined : result?.error ?? state.state,
       })
     }
     const costUsd = next.reduce((sum, s) => sum + (s.costUsd ?? 0), 0)
-    let saved = changed ? await this.save({ ...t, attempts: [...t.attempts.slice(0, -1), { ...attempt, shards: next, costUsd }] }) : t
+    const tokens = next.reduce<TokenCount | undefined>((sum, s) => addTokens(sum, s.tokens), undefined)
+    let saved = changed ? await this.save({ ...t, attempts: [...t.attempts.slice(0, -1), { ...attempt, shards: next, costUsd, tokens }] }) : t
     if (!next.every(s => s.done)) return
     const failed = next.filter(s => !s.ok)
     if (failed.length) return this.failNode(saved, `fan-out: ${failed.length} of ${next.length} part(s) failed: ${firstLine(failed[0]?.error)}`, events)
@@ -730,7 +733,7 @@ export class Conductor {
     const now = iso(await this.host.now())
     saved = await this.save({
       ...saved,
-      attempts: [...saved.attempts.slice(0, -1), { ...attempt, shards: next, costUsd, changedFiles, diffStat, finishedAt: now, summary: next.map(s => s.summary ?? '').join('\n---\n').slice(0, 4000) }],
+      attempts: [...saved.attempts.slice(0, -1), { ...attempt, shards: next, costUsd, tokens, changedFiles, diffStat, finishedAt: now, summary: next.map(s => s.summary ?? '').join('\n---\n').slice(0, 4000) }],
     })
     if (changedFiles.length === 0) return this.failNode(saved, 'the workers made no changes', events)
     return this.completeNode(saved, 'implement', { status: 'ok', reason: `fan-in of ${next.length} parts: ${diffStat}`, writes: ['attempt.result', 'attempt.diff'], costUsd }, events)
@@ -819,10 +822,16 @@ export class Conductor {
     const attempt = t.attempts.at(-1) as Attempt
     const reviewer = job.executor ? this.executors.get(job.executor) : undefined
     const verdict = why || reviewer?.verdict === undefined ? undefined : await reviewer.verdict(this.host, job.dir, exitCode)
-    const cost = reviewer && !why ? (await reviewer.collect(this.host, job.dir, exitCode)).costUsd : undefined
+    const collected = reviewer && !why ? await reviewer.collect(this.host, job.dir, exitCode) : undefined
+    const cost = collected?.costUsd
     const saved = await this.save({
       ...t,
-      attempts: [...t.attempts.slice(0, -1), { ...attempt, verdict: verdict?.verdict ?? 'review', costUsd: cost === undefined ? attempt.costUsd : (attempt.costUsd ?? 0) + cost }],
+      attempts: [...t.attempts.slice(0, -1), {
+        ...attempt,
+        verdict: verdict?.verdict ?? 'review',
+        costUsd: cost === undefined ? attempt.costUsd : (attempt.costUsd ?? 0) + cost,
+        tokens: addTokens(attempt.tokens, collected?.tokens),
+      }],
     })
     // A reviewer that produced nothing approved nothing: it counts as unsure, and the next node weighs it.
     const review = verdict?.verdict ?? 'review'
@@ -1006,10 +1015,33 @@ Use conductor_status for the board, then conductor_approve / conductor_reject (w
     return tasks.reduce((sum, t) => sum + t.attempts.reduce((s, a) => s + (a.costUsd ?? 0), 0), 0)
   }
 
+  /** Tokens and spend of a run's tasks, in total and per worker (the dashboard and /conduct cost). */
+  usageOf(tasks: readonly Task[]): { tokensIn: number; tokensOut: number; byWorker: WorkerUsage[] } {
+    const byWorker = new Map<ExecutorId, WorkerUsage & { taskIds: Set<string> }>()
+    let tokensIn = 0
+    let tokensOut = 0
+    for (const t of tasks) {
+      for (const a of t.attempts) {
+        const row = byWorker.get(a.executor) ?? { executor: a.executor, tasks: 0, attempts: 0, tokens: 0, costUsd: 0, estimated: false, taskIds: new Set<string>() }
+        row.taskIds.add(t.id)
+        row.attempts++
+        row.tokens += (a.tokens?.input ?? 0) + (a.tokens?.output ?? 0)
+        row.costUsd += a.costUsd ?? 0
+        row.estimated ||= a.costUsd === undefined || a.costEstimated === true
+        byWorker.set(a.executor, row)
+        tokensIn += a.tokens?.input ?? 0
+        tokensOut += a.tokens?.output ?? 0
+      }
+    }
+    const rows = [...byWorker.values()].map(({ taskIds, ...w }) => ({ ...w, tasks: taskIds.size }))
+    return { tokensIn, tokensOut, byWorker: rows.sort((a, b) => b.costUsd - a.costUsd) }
+  }
+
   async summary(runId: string): Promise<RunSummary | null> {
     const run = await this.source.getRun(runId)
     if (run === undefined) return null
     const tasks = await this.source.listTasks(runId)
+    const usage = this.usageOf(tasks)
     return {
       runId,
       goal: run.goal,
@@ -1019,7 +1051,16 @@ Use conductor_status for the board, then conductor_approve / conductor_reject (w
       running: tasks.filter(t => this.jobsOf(t).length > 0).length,
       review: tasks.filter(t => t.status === 'needs_review').length,
       failed: tasks.filter(t => t.status === 'failed').length,
+      queued: tasks.filter(t => t.status === 'planned' || t.status === 'classified' || t.status === 'ready').length,
       costUsd: this.costOf(tasks),
+      tokensIn: usage.tokensIn,
+      tokensOut: usage.tokensOut,
+      budgetRunUsd: this.config.budgets.runUsd,
+      budgetDayUsd: this.config.budgets.dayUsd,
+      spentTodayUsd: await this.spentToday(),
+      startedAt: run.createdAt,
+      integrationBranch: run.integrationBranch,
+      byWorker: usage.byWorker,
     }
   }
 
@@ -1039,6 +1080,9 @@ Use conductor_status for the board, then conductor_approve / conductor_reject (w
     return tasks.map(t => {
       const last = t.attempts.at(-1)
       const shardTrees = (last?.shards ?? []).filter(s => s.job).map(s => s.worktree)
+      const jobs = this.jobsOf(t)
+      const nodes = nodesOf(this.template(t))
+      const runningSince = jobs.map(j => j.startedAt).sort()[0]
       return {
         id: t.id,
         title: t.title,
@@ -1046,10 +1090,30 @@ Use conductor_status for the board, then conductor_approve / conductor_reject (w
         who: this.who(t),
         note: firstLine(t.note).slice(0, 160),
         worktree: last?.worktree,
-        isBusy: this.jobsOf(t).length > 0,
+        isBusy: jobs.length > 0,
         busyWorktrees: shardTrees.length ? shardTrees : undefined,
+        executor: last?.executor ?? t.classification?.executor,
+        tier: last?.tier ?? t.classification?.tier,
+        attempts: t.attempts.length,
+        tokens: t.attempts.reduce((sum, a) => sum + (a.tokens?.input ?? 0) + (a.tokens?.output ?? 0), 0),
+        costUsd: this.costOf([t]),
+        template: t.template,
+        node: t.cursor,
+        nodes,
+        nodeIndex: this.nodeIndex(t, nodes),
+        runningSince,
+        dependsOn: t.dependsOn,
       }
     })
+  }
+
+  /** Where the task stands among its template's nodes: past the last once merged, -1 before the first. */
+  private nodeIndex(t: Task, nodes: readonly string[]): number {
+    if (t.status === 'merged' || t.status === 'done') return nodes.length
+    const at = t.cursor === undefined ? -1 : nodes.indexOf(t.cursor)
+    if (at >= 0) return at
+    const lastRun = t.nodeRuns?.at(-1)
+    return lastRun === undefined ? -1 : nodes.indexOf(lastRun.node)
   }
 
   async status(runId: string): Promise<{ run: Run; tasks: Task[]; text: string }> {
@@ -1081,23 +1145,16 @@ ${lines.join('\n') || '(no tasks yet)'}`
 
   async costText(runId: string): Promise<string> {
     const { run, tasks } = await this.status(runId)
-    const byExecutor = new Map<string, { usd: number; attempts: number; estimated: boolean; tokens: number }>()
     const byClient = new Map<string, number>()
     const byNode = new Map<string, number>()
     for (const t of tasks) {
       for (const a of t.attempts) {
-        const row = byExecutor.get(a.executor) ?? { usd: 0, attempts: 0, estimated: false, tokens: 0 }
-        row.usd += a.costUsd ?? 0
-        row.attempts++
-        row.estimated ||= a.costUsd === undefined || a.costEstimated === true
-        row.tokens += (a.tokens?.input ?? 0) + (a.tokens?.output ?? 0)
-        byExecutor.set(a.executor, row)
         const client = t.client ?? '(no client)'
         byClient.set(client, (byClient.get(client) ?? 0) + (a.costUsd ?? 0))
       }
       for (const r of t.nodeRuns ?? []) if (r.costUsd) byNode.set(r.node, (byNode.get(r.node) ?? 0) + r.costUsd)
     }
-    const ex = [...byExecutor].map(([id, r]) => `  ${id.padEnd(10)} ${usd(r.usd).padStart(12)}  ${r.attempts} attempt(s), ${r.tokens} tokens${r.estimated ? ' (some costs unknown)' : ''}`)
+    const ex = this.usageOf(tasks).byWorker.map(r => `  ${r.executor.padEnd(10)} ${usd(r.costUsd).padStart(12)}  ${r.attempts} attempt(s), ${r.tokens} tokens${r.estimated ? ' (some costs unknown)' : ''}`)
     const cl = [...byClient].map(([c, v]) => `  ${c.padEnd(16)} ${usd(v)}`)
     const nd = [...byNode].map(([n, v]) => `  ${n.padEnd(10)} ${usd(v)}`)
     return `run ${run.id} cost ${usd(this.costOf(tasks))}\nby executor:\n${ex.join('\n') || '  (none)'}\nby node:\n${nd.join('\n') || '  (none)'}\nby client:\n${cl.join('\n') || '  (none)'}`

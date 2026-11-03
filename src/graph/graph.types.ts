@@ -1,4 +1,4 @@
-import type { Job, Task } from '../core/domain.types.ts'
+import type { Job, Task, TokenCount } from '../core/domain.types.ts'
 
 /**
  * The nodes a task can pass through (design doc §5B). Each is described by one
@@ -145,5 +145,6 @@ export interface Shard {
   ok?: boolean
   summary?: string
   costUsd?: number
+  tokens?: TokenCount
   error?: string
 }

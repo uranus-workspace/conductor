@@ -163,6 +163,7 @@ describe('the Conductor walks templates', () => {
     assert.equal(t.status, 'merged', t.note ?? 'no note')
     assert.equal(t.template, 'refactor')
     assert.equal(t.attempts[0]?.shards?.length, 2)
+    assert.deepEqual(t.attempts[0]?.tokens, { input: 200, output: 40 }, 'the fan-in sums its parts\' tokens')
     assert.ok(t.attempts[0]?.shards?.every(s => s.ok))
     assert.equal(show(root, `conductor/${runId}/integration`, 'api/log.txt'), 'made in scope\n')
     assert.equal(show(root, `conductor/${runId}/integration`, 'web/log.txt'), 'made in scope\n')

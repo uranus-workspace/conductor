@@ -80,16 +80,25 @@ You also need `git` and at least one worker CLI signed in: `claude`, `codex` (`c
 /conduct plan <goal>         start a run
 ```
 
-A line above the prompt shows progress (`▶ r1 3/12 · 2 running · 1 review · US$ 4.10`). Claude is only interrupted when a task needs a decision: a review, a merge conflict, a stuck run or a finished run.
+While a run is active, a band above the prompt shows its progress, and a dashboard opens beside the chat:
+
+```
+▶ r1  ███████▓▓░░░  8/12  ● 2 running  ◆ 1 review  1.2M tok  US$ 4.10 / 50.00
+   ● t3 codex/standard · implement · 3m 12s   ● t7 claude/strong · review · 41s
+```
+
+The dashboard has the progress bar, tiles for running, review, failed, tokens, run cost and today's spend against their budgets, the cost of each worker, and every task with the step it is at, its tokens and its cost, with Approve, Retry and Graph buttons. The desktop app draws its charts as SVG; the terminal draws them as text.
+
+Claude is only interrupted when a task needs a decision: a review, a merge conflict, a stuck run or a finished run.
 
 | Command | Description |
 |---|---|
 | `/conduct plan <goal>` | Start a run; Claude writes the plan |
-| `/conduct status` | List tasks; opens a panel with approve and retry buttons |
+| `/conduct status` | List tasks and open the dashboard |
 | `/conduct graph <task>` | Show a task's workflow and the path it took |
 | `/conduct run`, `pause`, `stop` | Resume, stop dispatching, or stop everything |
 | `/conduct retry <task> [worker]` | Retry a task, optionally on another worker |
-| `/conduct cost` | Cost by worker, by step and by client, and today's total |
+| `/conduct cost` | Cost by worker, by step and by client, and today's total; opens the dashboard |
 | `/conduct workers`, `worker <id> on\|off`, `on`, `off` | Switch the Conductor or single workers on and off |
 | `/conduct key [status\|remove]` | Manage the OpenRouter key |
 | `/conduct source` | Check the connection to the configured board |

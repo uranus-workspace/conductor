@@ -36,9 +36,11 @@ import {
   parseApproveInput, parseAskOpenRouterInput, parseDispatchInput, parsePlanInput, parseRejectInput, parseStatusInput,
 } from '../src/mod/tool-inputs.ts'
 import { planningPrompt } from '../src/prompts/planning.ts'
+import { band, dashboard } from './views.tsx'
 
-const summary = atom({ plugin: 'conductor', key: 'summary' } as const, null as ConductorSummary | null)
-const boardRows = atom({ plugin: 'conductor', key: 'board' } as const, [] as ConductorBoardRow[], { shape: 'board-1' })
+// Bump a shape when the value's fields change: what older code stored then reads as absent.
+const summary = atom({ plugin: 'conductor', key: 'summary' } as const, null as ConductorSummary | null, { shape: 'summary-2' })
+const boardRows = atom({ plugin: 'conductor', key: 'board' } as const, [] as ConductorBoardRow[], { shape: 'board-2' })
 
 const PANE = 'conductor-board'
 const GRAPH_PANE = 'conductor-graph'
@@ -198,8 +200,28 @@ function workerLines(c: Conductor, project: ConductorConfig, options: SwitchOpti
   }).join('\n')
 }
 
-const STATUS_COLOR: Partial<Record<ConductorBoardRow['status'], string>> = {
-  merged: 'green', done: 'green', needs_review: 'yellow', failed: 'red', running: 'cyan', verifying: 'cyan', dispatched: 'cyan',
+/** The surfaces that draw `Svg`; the terminal gets text bars. */
+const SVG_SURFACES: readonly string[] = ['desktop', 'mobile', 'vscode']
+
+/** Draws a task's graph in its pane (and saves it as .mmd beside the run's state). */
+async function showGraph($: EngineInterface, c: Conductor, cwd: string, taskId: string): Promise<{ text: string; isPlaced: boolean; path: string }> {
+  const g = await c.graph(taskId)
+  const path = `${cwd}/.conductor/graphs/${taskId}.mmd`
+  await $.fs.write(path, `${g.mermaid}\n`)
+  await update($, graphView, () => ({ taskId, mermaid: g.mermaid, path: g.path }))
+  const opened = await $.ui.open({ id: GRAPH_PANE, title: `Graph · ${taskId}` })
+  return { text: `${g.path}\n\n\`\`\`mermaid\n${g.mermaid}\n\`\`\``, isPlaced: opened.isPlaced, path }
+}
+
+/** Publishes the run's state and opens the dashboard beside the chat. */
+async function openDashboard($: EngineInterface, c: Conductor, runId: string): Promise<boolean> {
+  const value = await c.summary(runId)
+  const { tasks } = await c.status(runId)
+  const rows = c.boardRows(tasks)
+  await update($, summary, () => value)
+  await update($, boardRows, () => rows)
+  const opened = await $.ui.open({ id: PANE, title: `Conductor · ${runId}` })
+  return opened.isPlaced
 }
 
 export const register: Register = (on, options) => {
@@ -424,30 +446,24 @@ export const register: Register = (on, options) => {
           await detected
           const { requeued, killed } = await c.reconcile(runId)
           void tickActive()
+          await openDashboard($, c, runId)
           const fixed = requeued + killed > 0 ? ` Reconciled: ${requeued} task(s) back in the queue, ${killed} orphan process(es) stopped.` : ''
           return { text: `Run ${runId} running (heartbeat every ${Math.round((config?.heartbeatMs ?? 0) / 1000)} s).${fixed}` }
         }
         case 'status': {
           const runId = await resolveRun(rest[0])
           const { text, tasks } = await c.status(runId)
-          const rows = c.boardRows(tasks)
-          trackBusy(rows)
-          await update($, boardRows, () => rows)
-          // The board pane only when asked for (doc §9.6), and only where it is drawn beside the chat.
-          const opened = await $.ui.open({ id: PANE, title: `Conductor · ${runId}` })
-          const where = opened.isPlaced ? '\n\n(The board is open in the pane beside the chat.)' : ''
+          trackBusy(c.boardRows(tasks))
+          const isPlaced = await openDashboard($, c, runId)
+          const where = isPlaced ? '\n\n(The dashboard is open in the pane beside the chat.)' : ''
           return { text: `${text}${c.isEnabled ? '' : '\n\n(The Conductor is off: /conduct on to resume.)'}${where}` }
         }
         case 'graph': {
           const taskId = rest[0]
           if (taskId === undefined) return { text: 'Usage: /conduct graph <taskId>' }
-          const g = await c.graph(taskId)
-          const path = `${host?.cwd ?? (await $.session.cwd())}/.conductor/graphs/${taskId}.mmd`
-          await $.fs.write(path, `${g.mermaid}\n`)
-          await update($, graphView, () => ({ taskId, mermaid: g.mermaid, path: g.path }))
-          const opened = await $.ui.open({ id: GRAPH_PANE, title: `Graph · ${taskId}` })
-          const where = opened.isPlaced ? '(drawn in the pane beside the chat)' : `(saved to ${path})`
-          return { text: `${g.path}\n\n\`\`\`mermaid\n${g.mermaid}\n\`\`\`\n${where}` }
+          const shown = await showGraph($, c, host?.cwd ?? (await $.session.cwd()), taskId)
+          const where = shown.isPlaced ? '(drawn in the pane beside the chat)' : `(saved to ${shown.path})`
+          return { text: `${shown.text}\n${where}` }
         }
         case 'pause': {
           const runId = await resolveRun(rest[0])
@@ -470,7 +486,9 @@ export const register: Register = (on, options) => {
         case 'cost': {
           const today = await c.spentToday()
           const day = config?.budgets.dayUsd ?? 0
-          return { text: `${await c.costText(await resolveRun(rest[0]))}\ntoday (all runs): US$ ${today.toFixed(2)} of US$ ${day.toFixed(2)}` }
+          const runId = await resolveRun(rest[0])
+          await openDashboard($, c, runId)
+          return { text: `${await c.costText(runId)}\ntoday (all runs): US$ ${today.toFixed(2)} of US$ ${day.toFixed(2)}` }
         }
         case 'jev': {
           if (host === undefined) return { text: 'The Conductor is not initialised yet.' }
@@ -536,6 +554,8 @@ export const register: Register = (on, options) => {
     }
     const tasks = await c.plan(runId, input.tasks)
     void tickActive()
+    // The dashboard opens with the run, so progress is in view without asking for it.
+    await openDashboard($, c, runId)
     $.ui.toast(`conductor: plan with ${tasks.length} task(s) recorded, run ${runId} started`)
     return asText(`Plan recorded for run ${runId}: ${tasks.length} task(s) (${tasks.map(t => `${t.key}=${t.id}`).join(', ')}). Workers start on the next heartbeat; you will be woken when something needs review. Do not implement these tasks yourself.`)
   }).catch(($, e, next) => ({ deny: `conductor_plan failed: ${errorText(next.error)}` }))
@@ -613,33 +633,17 @@ export const register: Register = (on, options) => {
     return next({ ...e, message: { ...e.message, content: content as typeof e.message.content } })
   }).catch(($, e, next) => next(e))
 
-  // The band above the prompt: ▶ r1 3/12 · 2 running · 1 review · US$ 4.10
+  // The band above the prompt: progress bar, counts, tokens and cost; a second row lists running tasks.
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     const s = await read($, summary)
     if (e.props.hasSurvey || s === null || s.status === 'completed' || s.status === 'stopped') return next(e)
-    const { Box, Text } = $.ui.resolve(e)
-    const icon = s.status === 'paused' ? '⏸' : s.status === 'planning' ? '✎' : '▶'
-    const parts = [
-      `${icon} ${s.runId} ${s.merged}/${s.total}`,
-      `${s.running} running`,
-      ...(s.review > 0 ? [`${s.review} review`] : []),
-      ...(s.failed > 0 ? [`${s.failed} failed`] : []),
-      `US$ ${s.costUsd.toFixed(2)}`,
-    ]
-    return (
-      <Box>
-        <Text color={s.review > 0 ? 'yellow' : undefined} dimColor={s.review === 0}>
-          {parts.join(' · ')}
-        </Text>
-      </Box>
-    )
+    const rows = await read($, boardRows)
+    return band($.ui.resolve(e), { summary: s, rows, columns: e.props.bodyColumns, maxRows: e.props.maxRows, nowMs: Date.now() })
   })
 
-  // The board pane (/conduct status): one row per task, with the maestro's two common actions.
+  // The dashboard pane: opened with a run, and by /conduct status, run and cost.
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
-    const { Box, Text, Button } = $.ui.resolve(e)
-    const rows = await read($, boardRows)
-    const width = Math.max(30, e.props.bodyColumns)
+    const els = $.ui.resolve(e)
     const act = async (fn: () => Promise<unknown>) => {
       try {
         await fn()
@@ -648,28 +652,20 @@ export const register: Register = (on, options) => {
         $.ui.toast(`conductor: ${errorText(err)}`)
       }
     }
-    return (
-      <Box flexDirection="column">
-        {rows.length === 0 && <Text dimColor>No tasks. Start with /conduct plan &lt;goal&gt;.</Text>}
-        {rows.map(r => (
-          <Box key={`row-${r.id}`} flexDirection="column">
-            <Text>
-              <Text color={STATUS_COLOR[r.status]}>{r.status.padEnd(12)}</Text> {r.id} · {r.who} · {r.title.slice(0, Math.max(10, width - 40))}
-            </Text>
-            {r.note !== '' && <Text dimColor>   {r.note.slice(0, width - 4)}</Text>}
-            {r.status === 'needs_review' && (
-              <Box>
-                <Button key={`approve-${r.id}`} label="Approve" onPress={() => act(() => need().approve(r.id))} />
-                <Button key={`retry-${r.id}`} label="Retry" onPress={() => act(() => need().reject(r.id, 'retry requested from the board', true))} />
-              </Box>
-            )}
-            {r.status === 'failed' && (
-              <Button key={`retry-${r.id}`} label="Retry" onPress={() => act(() => need().retry(r.id))} />
-            )}
-          </Box>
-        ))}
-      </Box>
-    )
+    return dashboard(els, {
+      summary: await read($, summary),
+      rows: await read($, boardRows),
+      columns: Math.max(30, e.props.bodyColumns),
+      nowMs: Date.now(),
+      // Every table names every element (an absent one draws nothing), so the surface decides.
+      svg: SVG_SURFACES.includes(e.surface) && 'Svg' in els ? els.Svg : undefined,
+      actions: {
+        approve: id => void act(() => need().approve(id)),
+        reject: id => void act(() => need().reject(id, 'retry requested from the dashboard', true)),
+        retry: id => void act(() => need().retry(id)),
+        graph: id => void act(async () => showGraph($, need(), host?.cwd ?? (await $.session.cwd()), id)),
+      },
+    })
   })
 
   // The graph pane (/conduct graph <taskId>): the template, the path taken, and why each edge was taken.
