@@ -18,6 +18,29 @@ claude plugin install conductor@uranus
 
 You also need `git` and at least one worker CLI signed in: `claude`, `codex` (`codex login`), `opencode`, `cursor-agent` (`cursor-agent login`) or `agy`. Then store your OpenRouter key with `/conduct key`.
 
+### The OpenRouter key
+
+`/conduct key` asks for the key with the input hidden and stores it encrypted in your system's secret store. It never enters the conversation or a command line.
+
+| System | Where the key goes | How it asks |
+|---|---|---|
+| macOS | the Keychain (`security`) | a native dialog |
+| Linux desktop | the Secret Service: GNOME Keyring, KWallet or KeePassXC (`secret-tool`) | a `zenity` or `kdialog` dialog |
+| Linux without a desktop | the same, if a keyring is running | the terminal (run the script yourself, below) |
+
+On Linux, install `secret-tool` if it is missing:
+
+```bash
+sudo apt install libsecret-tools      # Debian, Ubuntu
+sudo dnf install libsecret            # Fedora
+```
+
+Where there is no dialog, for example over SSH, `/conduct key` replies with the command to run in a terminal instead (`sh <plugin folder>/scripts/openrouter-key.sh set`). The script reads the key there with echo off.
+
+On a server with no keyring at all, set `OPENROUTER_API_KEY` in the environment Claude Code starts from instead. The Conductor reads it first, on every system.
+
+`/conduct key status` says where the key is, and `/conduct key remove` deletes it.
+
 ### For a team
 
 Add the marketplace to the project's `.claude/settings.json` (or your own `~/.claude/settings.json`). Claude Code offers to install it, and keeps it up to date:
@@ -63,10 +86,11 @@ Runs in progress survive an update: their state is on the board and in `.conduct
 ## Uninstall
 
 1. **Stop active runs.** In each project with a run, `/conduct stop`. Workers are detached processes and keep running otherwise.
-2. **Remove the OpenRouter key** while the plugin is still installed: `/conduct key remove`. It deletes the `conductor.openrouter` item from your macOS Keychain. If the plugin is already gone:
+2. **Remove the OpenRouter key** while the plugin is still installed: `/conduct key remove`. It deletes the `conductor.openrouter` item from your Keychain (macOS) or keyring (Linux). If the plugin is already gone:
 
    ```bash
-   security delete-generic-password -s conductor.openrouter
+   security delete-generic-password -s conductor.openrouter                    # macOS
+   secret-tool clear service conductor.openrouter account "$USER"              # Linux
    ```
 
 3. **Remove the plugin.**

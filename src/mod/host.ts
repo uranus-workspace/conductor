@@ -7,7 +7,8 @@ import type { Host } from '../core/host.types.ts'
  * (symlinks resolved): some workers refuse a working directory spelled through one.
  */
 export function hostOf($: EngineInterface, cwd: string, home: string): Host {
-  // The key: the environment first, else the macOS Keychain (looked up once per host).
+  // The key: the environment first, else the system's secret store, the macOS Keychain or the
+  // Secret Service on Linux (looked up once per host).
   let keychainKey: Promise<string | undefined> | undefined
   const fromKeychain = (): Promise<string | undefined> => {
     keychainKey ??= $.process

@@ -76,7 +76,7 @@ flowchart TB
 - The mod (`hooks/register.tsx`) is the only code that touches Claude Code's `$` API. Everything else (`src/`) talks to the outside through one port, `Host`, so it runs the same under the mod engine and under Node in the tests.
 - The task source holds the state. A remote board (Uranus OS, Jira, Linear) is written first; the local file keeps what only this machine needs (processes, worktrees, attempts). A run survives `/clear`, compaction, mod reloads and restarts.
 - Workers run detached (`scripts/job.sh`): a hot reload of the mod or a restart of the session does not kill them. The heartbeat reads their `pid`, `exit` and logs from disk.
-- Model calls go through OpenRouter for Jev, `ask_openrouter` and every worker whose CLI can route through it. Cursor and Antigravity use their own logins. The key lives in the macOS Keychain (`/conduct key`).
+- Model calls go through OpenRouter for Jev, `ask_openrouter` and every worker whose CLI can route through it. Cursor and Antigravity use their own logins. The key lives in the system's secret store, the macOS Keychain or the Linux Secret Service (`/conduct key`).
 
 ## A run, end to end
 

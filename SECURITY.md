@@ -19,7 +19,7 @@ Include what you found, how to reproduce it, and the version or commit. You shou
 
 The Conductor runs coding agents on your machine with your credentials. These are the boundaries it promises to keep; a way around any of them is a vulnerability:
 
-- **The OpenRouter key** is kept in the macOS Keychain or `OPENROUTER_API_KEY`. It reaches workers through their environment only, never on a command line, in a log, on a board or in the conversation.
+- **The OpenRouter key** is kept in the system's secret store (the macOS Keychain, or the Secret Service on Linux) or `OPENROUTER_API_KEY`. It reaches workers through their environment only, never on a command line, in a log, on a board or in the conversation.
 - **Workers** write only inside their own worktree under `~/.conductor/worktrees/`, never push, and never deploy. Your `.env` files are not copied into a worktree.
 - **Redaction**: API keys and CPF/CNPJ numbers are masked before text goes to OpenRouter or a board.
 - **The edit guard**: Claude cannot edit files in a worktree while a worker is using it.

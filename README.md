@@ -75,7 +75,7 @@ You also need `git` and at least one worker CLI signed in: `claude`, `codex` (`c
 ## Usage
 
 ```
-/conduct key                 store your OpenRouter key in the macOS Keychain
+/conduct key                 store your OpenRouter key in the system keychain
 /conduct workers             see which workers are switched on and ready
 /conduct plan <goal>         start a run
 ```
@@ -152,7 +152,7 @@ Put overrides in `.conductor/config.json` in your project. Every field is option
 - `decision.mode`: `rules`, `shadow` (Jev's answers are logged, the rules decide) or `enforce` (Jev decides when confident, the rules otherwise).
 - Models are set per worker and provider in `executors.<id>.models`. All defaults are in [src/core/config.ts](src/core/config.ts).
 
-The OpenRouter key is read from `OPENROUTER_API_KEY`, or from the macOS Keychain after `/conduct key`.
+The OpenRouter key is read from `OPENROUTER_API_KEY`, or from the system's secret store after `/conduct key`: the Keychain on macOS, the Secret Service (GNOME Keyring, KWallet or KeePassXC) on Linux. See [docs/install.md](docs/install.md#the-openrouter-key).
 
 ## Security
 

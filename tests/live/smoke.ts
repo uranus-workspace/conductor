@@ -30,7 +30,7 @@ git('add', '.')
 git('-c', 'user.name=smoke', '-c', 'user.email=smoke@localhost', 'commit', '-q', '-m', 'init')
 log(`repo ${root}`)
 
-// The key as the mod finds it: the environment, else the macOS Keychain (/conduct key).
+// The key as the mod finds it: the environment, else the system's secret store (/conduct key).
 const keychain = (): string | undefined => {
   try {
     return execFileSync('/bin/sh', [join(pluginRoot, 'scripts/openrouter-key.sh'), 'get'], { encoding: 'utf8' }).trim() || undefined

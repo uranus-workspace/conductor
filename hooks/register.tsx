@@ -498,18 +498,23 @@ export const register: Register = (on, options) => {
           return { text: `${reportText(buildReport(await log.readAll()), mode)}${note}` }
         }
         case 'key': {
-          // The key goes from a native dialog (hidden input) to the macOS Keychain; it never enters the conversation.
+          // The key goes from a dialog (hidden input) to the system's secret store: the macOS Keychain, or
+          // the Secret Service on Linux. It never enters the conversation.
           const script = `${$.plugin.root}/scripts/openrouter-key.sh`
           const action = rest[0] === 'status' ? 'status' : rest[0] === 'remove' ? 'delete' : 'set'
+          const fromEnv = Boolean(await $.env.get('OPENROUTER_API_KEY'))
           const res = await $.process.run(['/bin/sh', script, action], { timeoutMs: 5 * 60_000 })
-          if (res.exitCode !== 0) return { text: `OpenRouter key: ${res.stderr.trim() || 'not saved'}` }
+          if (res.exitCode !== 0) {
+            const why = res.stderr.trim() || 'not saved'
+            return { text: `OpenRouter key: ${why}${action === 'status' && fromEnv ? ' (OPENROUTER_API_KEY is set in the environment and is used)' : ''}` }
+          }
+          const where = (await $.process.run(['/bin/sh', script, 'where'], { timeoutMs: 10_000 })).stdout.trim() || 'the system keyring'
           if (action === 'status') {
-            const fromEnv = Boolean(await $.env.get('OPENROUTER_API_KEY'))
-            return { text: `OpenRouter key: ${fromEnv ? 'set in the environment (OPENROUTER_API_KEY)' : `${res.stdout.trim()} in the macOS Keychain`}.` }
+            return { text: `OpenRouter key: ${fromEnv ? 'set in the environment (OPENROUTER_API_KEY)' : `${res.stdout.trim()} in ${where}`}.` }
           }
           // A new key changes which workers can run and whether Jev answers: rebuild with it.
           apply(await setUp($, await $.session.cwd(), options, trackBusy))
-          return { text: action === 'set' ? 'OpenRouter key saved, encrypted, in the macOS Keychain. Jev and the OpenRouter workers use it from now on.' : 'OpenRouter key removed from the macOS Keychain.' }
+          return { text: action === 'set' ? `OpenRouter key saved, encrypted, in ${where}. Jev and the OpenRouter workers use it from now on.` : `OpenRouter key removed from ${where}.` }
         }
         case 'source':
         case 'uranus': {
