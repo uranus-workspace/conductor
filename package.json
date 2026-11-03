@@ -2,16 +2,47 @@
   "name": "conductor",
   "version": "0.1.0",
   "private": true,
-  "type": "module",
   "description": "Claude Code plugin that splits a goal into tasks and runs them in parallel across Claude, Codex, OpenCode, Cursor and Antigravity, each in its own git worktree.",
+  "license": "MIT",
+  "author": "Uranus <gustavo.bertoi@uranus.com.br>",
+  "homepage": "https://github.com/uranus-workspace/conductor#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/uranus-workspace/conductor.git"
+  },
+  "bugs": {
+    "url": "https://github.com/uranus-workspace/conductor/issues"
+  },
+  "keywords": [
+    "claude-code",
+    "claude-code-plugin",
+    "coding-agents",
+    "multi-agent",
+    "openrouter",
+    "git-worktree"
+  ],
+  "type": "module",
   "scripts": {
     "test": "node --test --test-reporter=spec tests/unit/*.spec.ts",
     "test:mod": "claude plugin test .",
     "validate": "claude plugin validate .",
-    "typecheck": "tsc -p .",
-    "smoke": "node tests/live/smoke.ts"
+    "typecheck": "tsc -p tsconfig.core.json && tsc -p tests/tsconfig.json",
+    "typecheck:mod": "tsc -p .",
+    "smoke": "node tests/live/smoke.ts",
+    "release": "semantic-release"
   },
   "engines": {
-    "node": ">=23.6"
+    "node": ">=22.18"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "21.2.4",
+    "@commitlint/config-conventional": "21.2.4",
+    "@semantic-release/changelog": "7.0.0",
+    "@semantic-release/exec": "7.1.0",
+    "@semantic-release/git": "11.0.1",
+    "@types/node": "26.6.6",
+    "conventional-changelog-conventionalcommits": "9.3.1",
+    "semantic-release": "25.0.9",
+    "typescript": "7.0.2"
   }
 }
