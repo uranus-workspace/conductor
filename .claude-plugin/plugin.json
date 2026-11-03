@@ -4,7 +4,7 @@
   "description": "Claude Code plugin that splits a goal into tasks and runs them in parallel across Claude, Codex, OpenCode, Cursor and Antigravity, each in its own git worktree.",
   "author": {
     "name": "Uranus",
-    "email": "gustavo.bertoi@uranus.com.br"
+    "email": "contato@uranus.com.br"
   },
   "homepage": "https://github.com/uranus-workspace/conductor",
   "repository": "https://github.com/uranus-workspace/conductor",

@@ -6,4 +6,4 @@ In short: be respectful and constructive, assume good faith, and keep discussion
 
 ## Reporting
 
-Report unacceptable behavior to the maintainers at gustavo.bertoi@uranus.com.br. Reports are handled privately, and the maintainers will act as described in the Covenant's enforcement guidelines, from a warning up to a permanent ban.
+Report unacceptable behavior to the maintainers at contato@uranus.com.br. Reports are handled privately, and the maintainers will act as described in the Covenant's enforcement guidelines, from a warning up to a permanent ban.
