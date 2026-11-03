@@ -356,14 +356,9 @@ export const register: Register = (on, options) => {
     return started
   })
 
-  // After /clear, /resume or /branch the conversation forgot; the task source did not.
-  on('classic.SessionStart', async ($, e, next) => {
-    if (config?.enabled) void reconcileActive().catch(() => undefined)
-    return next(e)
-  }).catch(($, e, next) => next(e))
-
-  // A plugin above may pass classic.SessionStart on past this one; /clear also ends the
-  // session here. The end hook's budget is short, so the reconciliation runs a moment later.
+  // After /clear the conversation forgot; the task source did not. (classic.SessionStart would
+  // say so too, but the built-in cc-plugin-sec-default passes it on before a mod sees it.)
+  // The end hook's budget is short, so the reconciliation runs a moment later.
   on('session.end', async ($, e, next) => {
     if (e.reason === 'clear' && config?.enabled) {
       $.clock.after(1000, () => {
@@ -603,9 +598,9 @@ export const register: Register = (on, options) => {
     const masked = redact(e.text)
     return masked === e.text ? next(e) : next({ ...e, text: masked })
   }).catch(($, e, next) => next(e))
-  // Every other row (tool results, the model's text). A plugin seated above may pass this event on past it.
-  on('session.append', async ($, e, next) => {
-    if (options.redact_transcript !== true) return next(e)
+  // Every other row (tool results, the model's text). Registered only when switched on: a plugin
+  // seated above (cc-plugin-sec-default) may pass this event on past it, and says so in the transcript.
+  if (options.redact_transcript === true) on('session.append', async ($, e, next) => {
     const content = e.message.content.map(block => {
       const b = block as { type: string; text?: unknown; content?: unknown }
       if (b.type === 'text' && typeof b.text === 'string') return { ...block, text: redact(b.text) }

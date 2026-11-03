@@ -157,7 +157,7 @@ test('the maestro cannot edit a worktree while its worker runs, elsewhere it can
   engineStubs(on as never, [], { 'tasks.json': tasksJson })
   on('fs.list', () => ({ value: [] }))
   on('fs.exists', () => ({ value: false }))
-  on('ui.open', () => ({ value: { isPlaced: false } }))
+  on('ui.open', () => ({ value: { isPlaced: false, reason: 'no surface in tests' } }))
   on('tool.call', () => ({ result: {} }))
   await $.session.start({ cwd: '/p', surface: 'terminal', isInteractive: true })
   await $.command.run({ command: 'conduct', args: 'status' } as never)
