@@ -41,10 +41,15 @@ These rules hold for every change to this repository, by a person or an agent. T
 
 ```bash
 npm test                  # Node: core, adapters, end to end with real git and job.sh
-claude plugin test .      # the mod's hooks in the engine
-claude plugin validate .
-tsc -p .                  # once the engine has laid .claude-plugin/types (a --plugin-dir session)
+npm run typecheck         # the core and the tests (what CI runs)
+npm run test:mod          # the mod's hooks in the engine
+npm run validate          # claude plugin validate
+npm run typecheck:mod     # the mod too, once the engine has laid .claude-plugin/types (a --plugin-dir session)
 npm run smoke             # live, real CLIs and tokens: after changing an executor or the worker brief
 ```
 
 A test that asserts on user-facing text asserts the English text.
+
+## Commits
+
+Conventional Commits (`feat(graph): …`, `fix(executors): …`, `docs: …`); scopes and types are in CONTRIBUTING.md. Releases are cut from them by semantic-release, so the type decides the version. No `Co-Authored-By` trailers.

@@ -6,6 +6,15 @@
     "name": "Uranus",
     "email": "gustavo.bertoi@uranus.com.br"
   },
+  "homepage": "https://github.com/uranus-workspace/conductor",
+  "repository": "https://github.com/uranus-workspace/conductor",
+  "license": "MIT",
+  "keywords": [
+    "orchestration",
+    "coding-agents",
+    "git-worktree",
+    "openrouter"
+  ],
   "types": "./types/index.d.ts",
   "userConfig": {
     "enabled": {

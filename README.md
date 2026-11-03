@@ -13,6 +13,12 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/uranus-workspace/conductor/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/uranus-workspace/conductor/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://github.com/uranus-workspace/conductor/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/uranus-workspace/conductor"></a>
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue"></a>
+</p>
+
+<p align="center">
   <a href="#install">Install</a> ·
   <a href="#usage">Usage</a> ·
   <a href="docs/architecture.md">Architecture</a> ·
@@ -51,7 +57,7 @@ The full design is in [docs/architecture.md](docs/architecture.md).
 
 ## Install
 
-The repository is private. Your machine needs a git credential that can read it (for example `gh auth login`, then `gh auth setup-git`). In Claude Code:
+In Claude Code:
 
 ```
 /plugin install conductor --marketplace uranus-workspace/conductor
@@ -142,14 +148,24 @@ The OpenRouter key is read from `OPENROUTER_API_KEY`, or from the macOS Keychain
 ## Development
 
 ```bash
+npm ci
 npm test                         # unit and end-to-end tests (real git, simulated CLIs and MCP servers)
-claude plugin test .             # tests of the plugin inside Claude Code
-claude plugin validate .
+npm run typecheck
+npm run validate                 # claude plugin validate
+npm run test:mod                 # tests of the plugin inside Claude Code
 npm run smoke                    # live run with the installed worker CLIs (uses real tokens)
 node tests/live/openrouter.ts    # live check of Jev and OpenRouter
 ```
 
 Code conventions are in [CLAUDE.md](CLAUDE.md). The original design notes are in [docs/CONTEXT.md](docs/CONTEXT.md), and findings about the APIs used are in [docs/api-findings.md](docs/api-findings.md).
+
+## Contributing
+
+Issues and pull requests are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) first; commits follow Conventional Commits, and releases are made from them by semantic-release ([CHANGELOG.md](CHANGELOG.md)). Report security problems privately, as described in [SECURITY.md](SECURITY.md). Everyone taking part follows the [code of conduct](CODE_OF_CONDUCT.md).
+
+## License
+
+[MIT](LICENSE) © Uranus
 
 ## Status
 

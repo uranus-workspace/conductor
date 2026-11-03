@@ -1,0 +1,51 @@
+name: Bug report
+description: Something does not work as described.
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. /conduct plan ...
+        2. ...
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Conductor version
+      placeholder: 1.0.0
+    validations:
+      required: true
+  - type: input
+    id: claude
+    attributes:
+      label: Claude Code version
+      description: The output of `claude --version`.
+    validations:
+      required: true
+  - type: dropdown
+    id: workers
+    attributes:
+      label: Workers involved
+      multiple: true
+      options: [claude, codex, opencode, cursor, antigravity, openrouter, not sure]
+  - type: dropdown
+    id: board
+    attributes:
+      label: Board
+      options: [local, uranus, jira, linear]
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: The worker's log from ~/.conductor/worktrees/.../logs, or the output of /conduct status. Remove keys and personal data first.
+      render: text
