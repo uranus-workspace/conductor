@@ -24,7 +24,7 @@ These rules hold for every change to this repository, by a person or an agent. T
 
 ## LLM calls: OpenRouter is the gateway
 
-- Every LLM call goes through OpenRouter unless the config says otherwise: Jev (`<jev.baseUrl>/v1/systemone`), `ask_openrouter`, the `openrouter` worker, and every worker whose CLI can route through it (Codex, Codex, OpenCode — `OPENROUTER_CAPABLE`).
+- Every LLM call goes through OpenRouter unless the config says otherwise: Jev (`<jev.baseUrl>/v1/systemone`), `ask_openrouter`, the `openrouter` worker, and every worker whose CLI can route through it (Claude, Codex, OpenCode — `OPENROUTER_CAPABLE`).
 - The global `gateway` decides; a worker's own `provider` overrides it. Models are configured per provider (`models.openrouter`, `models.native`), as OpenRouter ids (`vendor/model`) under `openrouter`.
 - Do not call a model vendor's API directly. A new model call goes through `openrouterComplete` or the Jev client.
 - The key is `OPENROUTER_API_KEY`, read in one place (`src/mod/host.ts`), passed to workers by environment, never on argv, never logged. A worker routed through OpenRouter without a key reports why it cannot run (`Availability`), it does not fail later.
@@ -43,8 +43,8 @@ These rules hold for every change to this repository, by a person or an agent. T
 npm test                  # Node: core, adapters, end to end with real git and job.sh
 npm run typecheck         # the core and the tests (what CI runs)
 npm run test:mod          # the mod's hooks in the engine
-npm run validate          # Codex plugin validate
-npm run typecheck:mod     # the mod too, once the engine has laid .Codex-plugin/types (a --plugin-dir session)
+npm run validate          # claude plugin validate
+npm run typecheck:mod     # the mod too, once the engine has laid .claude-plugin/types (a --plugin-dir session)
 npm run smoke             # live, real CLIs and tokens: after changing an executor or the worker brief
 ```
 
