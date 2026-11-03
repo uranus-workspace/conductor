@@ -82,7 +82,7 @@ describe('OpenRouter worker (curl in a detached job)', () => {
       await sleep(50)
     }
     const [t] = await source.listTasks(runId)
-    assert.equal(t?.status, 'merged', t?.note)
+    assert.equal(t?.status, 'merged', t?.note ?? 'no note')
     const merged = execFileSync('git', ['show', `conductor/${runId}/integration:docs/glossary.md`], { cwd: root, encoding: 'utf8' })
     assert.equal(merged, '# Glossary\n\n- run: a goal\n', 'fence stripped, newline added')
     assert.equal(t?.attempts[0]?.costUsd, 0.0004)

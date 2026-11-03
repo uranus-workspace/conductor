@@ -1,0 +1,8 @@
+{
+  // The core without the Claude Code API types, for CI. "dom" stands in for the web APIs the
+  // mod environment provides (URL, TextEncoder); tsconfig.json checks against the exact list.
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "lib": ["es2023", "dom"] },
+  "include": ["src"],
+  "exclude": ["src/mod/host.ts"]
+}

@@ -160,7 +160,7 @@ describe('the Conductor walks templates', () => {
       files: ['api/log.txt', 'web/log.txt'], labels: ['template:refactor'],
     }])
     const t = await until(c, source, runId, x => x.status === 'merged' || x.status === 'failed')
-    assert.equal(t.status, 'merged', t.note)
+    assert.equal(t.status, 'merged', t.note ?? 'no note')
     assert.equal(t.template, 'refactor')
     assert.equal(t.attempts[0]?.shards?.length, 2)
     assert.ok(t.attempts[0]?.shards?.every(s => s.ok))
@@ -200,7 +200,7 @@ describe('the Conductor walks templates', () => {
     const runId = await c.createRun('bugfix')
     await c.plan(runId, [{ key: 'b', title: 'Fix the crash on save', description: 'fix: create file fix.txt', acceptance: ['no crash'], files: ['fix.txt'] }])
     const t = await until(c, source, runId, x => x.status === 'merged' || x.status === 'failed')
-    assert.equal(t.status, 'merged', t.note)
+    assert.equal(t.status, 'merged', t.note ?? 'no note')
     assert.equal(t.template, 'bugfix')
     assert.equal(t.nodeRuns?.[2]?.node, 'research')
     assert.ok((t.notes ?? '').length > 0)
