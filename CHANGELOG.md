@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.3.0](https://github.com/uranus-workspace/conductor/compare/v1.2.0...v1.3.0) (2026-11-03)
+
+### Features
+
+* project log and metrics ledger, with /conduct stats ([99b8a47](https://github.com/uranus-workspace/conductor/commit/99b8a472fa363995112a2882f50c3e870d24f573))
+
 ## [1.2.0](https://github.com/uranus-workspace/conductor/compare/v1.1.0...v1.2.0) (2026-11-03)
 
 ### Features
